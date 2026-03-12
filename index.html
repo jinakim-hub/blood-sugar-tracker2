@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>혈당 기록</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f4f1ec;
+    --surface: #fdfcfa;
+    --border: #e2ddd6;
+    --text: #1e1c19;
+    --muted: #8a8480;
+    --accent: #c0392b;
+    --accent-light: #f9eae8;
+    --safe: #27ae60;
+    --warn: #e67e22;
+    --danger: #c0392b;
+    --blue: #2980b9;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  header p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── 입력 카드 ── */
+  .input-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .input-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+
+  .input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .input-group { display: flex; flex-direction: column; gap: 5px; }
+  .input-group label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .input-group input, .input-group select {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-group input:focus, .input-group select:focus {
+    border-color: var(--accent);
+  }
+
+  .btn-add {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-add:hover { opacity: 0.85; }
+
+  /* ── 탭 ── */
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 16px;
+    gap: 4px;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 4px;
+    border: none;
+    background: transparent;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'Noto Sans KR', sans-serif;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab.active {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* ── 차트 카드 ── */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .chart-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-wrap.tall { height: 280px; }
+
+  /* 주간 범례 */
+  .week-legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .wl-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .wl-line {
+    width: 22px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  /* ── 오늘 기록 목록 ── */
+  .records-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .records-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+
+  .record-list { display: flex; flex-direction: column; gap: 8px; }
+  .record-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .record-label { font-size: 12px; color: var(--muted); }
+  .record-time { font-size: 13px; font-weight: 500; font-family: 'DM Mono', monospace; }
+  .record-val {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+  }
+  .record-val.safe { color: var(--safe); }
+  .record-val.warn { color: var(--warn); }
+  .record-val.danger { color: var(--danger); }
+  .record-del {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  .record-del:hover { background: #f0ece8; }
+  .record-item { cursor: pointer; transition: background 0.15s; }
+  .record-item:hover { background: #ede9e3; }
+
+  /* ── 수정 모달 ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 24px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  }
+  .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+  .modal .input-grid { margin-bottom: 14px; }
+  .modal-btns { display: flex; gap: 8px; }
+  .btn-save {
+    flex: 1; padding: 11px; background: var(--accent); color: #fff;
+    border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+    font-family: 'Noto Sans KR', sans-serif; cursor: pointer;
+  }
+  .btn-cancel {
+    flex: 1; padding: 11px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; font-size: 14px;
+    font-weight: 500; font-family: 'Noto Sans KR', sans-serif; cursor: pointer;
+  }
+
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+  /* ── 통계 바 ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 10px;
+    text-align: center;
+  }
+  .stat-box .sv {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+  }
+  .stat-box .sl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* 범위 안내 */
+  .range-guide {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .rg-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .rg-dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🩸 혈당 기록</h1>
+  <p>하루 8회 측정 · 일간 / 주간 / 월간 그래프</p>
+</header>
+
+<!-- 입력 -->
+<div class="input-card">
+  <h2>측정값 입력</h2>
+  <div class="input-grid">
+    <div class="input-group">
+      <label>날짜</label>
+      <input type="date" id="inp-date">
+    </div>
+    <div class="input-group">
+      <label>시간</label>
+      <input type="time" id="inp-time">
+    </div>
+    <div class="input-group">
+      <label>혈당 (mg/dL)</label>
+      <input type="number" id="inp-val" placeholder="예: 110" min="40" max="600">
+    </div>
+    <div class="input-group">
+      <label>측정 시점</label>
+      <select id="inp-tag">
+        <option value="기상">기상</option>
+        <option value="기상후2시간+">기상후 2시간+</option>
+        <option value="아침식후1시간">아침식후 1시간</option>
+        <option value="아침식후2시간">아침식후 2시간</option>
+        <option value="점심식후1시간">점심식후 1시간</option>
+        <option value="점심식후2시간">점심식후 2시간</option>
+        <option value="저녁식후1시간">저녁식후 1시간</option>
+        <option value="저녁식후2시간">저녁식후 2시간</option>
+        <option value="자기전">자기전</option>
+      </select>
+    </div>
+  </div>
+  <button class="btn-add" onclick="addRecord()">+ 기록 추가</button>
+</div>
+
+<!-- 통계 -->
+<div class="stats-row" id="stats-row">
+  <div class="stat-box"><div class="sv" id="s-avg">—</div><div class="sl">평균</div></div>
+  <div class="stat-box"><div class="sv" id="s-min">—</div><div class="sl">최저</div></div>
+  <div class="stat-box"><div class="sv" id="s-max">—</div><div class="sl">최고</div></div>
+</div>
+
+<!-- 탭 -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('daily', this)">일간</button>
+  <button class="tab" onclick="switchTab('weekly', this)">주간</button>
+  <button class="tab" onclick="switchTab('monthly', this)">월간</button>
+</div>
+
+<!-- 차트 -->
+<div class="chart-card">
+  <h2 id="chart-title">오늘 혈당 변화</h2>
+  <div class="week-legend" id="week-legend" style="display:none"></div>
+  <div class="chart-wrap" id="chart-wrap"><canvas id="myChart"></canvas></div>
+</div>
+
+<!-- 범위 안내 -->
+<div class="range-guide">
+  <div class="rg-item"><div class="rg-dot" style="background:var(--safe)"></div>정상 (100 미만)</div>
+  <div class="rg-item"><div class="rg-dot" style="background:var(--warn)"></div>전당뇨 (100–125)</div>
+  <div class="rg-item"><div class="rg-dot" style="background:var(--danger)"></div>당뇨병 의심 (126+)</div>
+</div>
+<div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:16px;margin-top:-12px;">대한당뇨병학회 공복혈당 기준</div>
+
+<!-- 오늘 기록 목록 -->
+<div class="records-card">
+  <h2>오늘 측정 기록 <span style="font-size:12px;font-weight:400;color:var(--muted)">· 항목 탭하면 수정</span></h2>
+  <div class="record-list" id="record-list">
+    <div class="empty">아직 오늘 기록이 없습니다.</div>
+  </div>
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-overlay" id="edit-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <h3>✏️ 기록 수정</h3>
+    <div class="input-grid">
+      <div class="input-group">
+        <label>시간</label>
+        <input type="time" id="edit-time">
+      </div>
+      <div class="input-group">
+        <label>혈당 (mg/dL)</label>
+        <input type="number" id="edit-val" min="40" max="600">
+      </div>
+    </div>
+    <div class="input-group" style="margin-bottom:16px">
+      <label>측정 시점</label>
+      <select id="edit-tag">
+        <option value="기상">기상</option>
+        <option value="기상후2시간+">기상후 2시간+</option>
+        <option value="아침식후1시간">아침식후 1시간</option>
+        <option value="아침식후2시간">아침식후 2시간</option>
+        <option value="점심식후1시간">점심식후 1시간</option>
+        <option value="점심식후2시간">점심식후 2시간</option>
+        <option value="저녁식후1시간">저녁식후 1시간</option>
+        <option value="저녁식후2시간">저녁식후 2시간</option>
+        <option value="자기전">자기전</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">취소</button>
+      <button class="btn-save" onclick="saveEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'blood_sugar_records_v1';
+let records = [];
+let currentTab = 'daily';
+let chart = null;
+
+// 초기화
+window.onload = () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) records = JSON.parse(saved);
+  const now = new Date();
+  document.getElementById('inp-date').value = toDateStr(now);
+  document.getElementById('inp-time').value = toTimeStr(now);
+  renderAll();
+};
+
+function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
+function toDateStr(d) { return d.toISOString().slice(0,10); }
+function toTimeStr(d) { return d.toTimeString().slice(0,5); }
+
+// 대한당뇨병학회 공복혈당 기준
+function getLevel(v) {
+  if (v >= 126) return 'danger';  // 당뇨병 의심
+  if (v >= 100) return 'warn';    // 공복혈당장애(전당뇨)
+  return 'safe';                  // 정상
+}
+
+function addRecord() {
+  const date = document.getElementById('inp-date').value;
+  const time = document.getElementById('inp-time').value;
+  const val  = parseInt(document.getElementById('inp-val').value);
+  const tag  = document.getElementById('inp-tag').value;
+  if (!date || !time || isNaN(val) || val < 40 || val > 600) {
+    alert('날짜, 시간, 혈당 수치(40~600)를 올바르게 입력해주세요.');
+    return;
+  }
+  records.push({ date, time, val, tag, id: Date.now() });
+  records.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  save();
+  document.getElementById('inp-val').value = '';
+  renderAll();
+}
+
+function deleteRecord(id) {
+  records = records.filter(r => r.id !== id);
+  save();
+  renderAll();
+}
+
+function renderAll() {
+  renderStats();
+  renderList();
+  renderChart(currentTab);
+}
+
+function renderStats() {
+  const today = toDateStr(new Date());
+  const todayRecs = records.filter(r => r.date === today);
+  if (todayRecs.length === 0) {
+    ['s-avg','s-min','s-max'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  const vals = todayRecs.map(r => r.val);
+  const avg = Math.round(vals.reduce((a,b)=>a+b,0) / vals.length);
+  document.getElementById('s-avg').textContent = avg;
+  document.getElementById('s-min').textContent = Math.min(...vals);
+  document.getElementById('s-max').textContent = Math.max(...vals);
+}
+
+function renderList() {
+  const today = toDateStr(new Date());
+  const todayRecs = records.filter(r => r.date === today);
+  const el = document.getElementById('record-list');
+  if (todayRecs.length === 0) {
+    el.innerHTML = '<div class="empty">아직 오늘 기록이 없습니다.</div>';
+    return;
+  }
+  el.innerHTML = todayRecs.map(r => `
+    <div class="record-item" onclick="openEdit(${r.id})">
+      <div>
+        <div class="record-label">${r.tag} · ${r.time}</div>
+      </div>
+      <div class="record-val ${getLevel(r.val)}">${r.val} <span style="font-size:12px;font-weight:400">mg/dL</span></div>
+      <button class="record-del" onclick="event.stopPropagation();deleteRecord(${r.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+let editingId = null;
+
+function openEdit(id) {
+  const rec = records.find(r => r.id === id);
+  if (!rec) return;
+  editingId = id;
+  document.getElementById('edit-time').value = rec.time;
+  document.getElementById('edit-val').value  = rec.val;
+  document.getElementById('edit-tag').value  = rec.tag;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('edit-modal')) return;
+  document.getElementById('edit-modal').classList.remove('open');
+  editingId = null;
+}
+
+function saveEdit() {
+  const time = document.getElementById('edit-time').value;
+  const val  = parseInt(document.getElementById('edit-val').value);
+  const tag  = document.getElementById('edit-tag').value;
+  if (!time || isNaN(val) || val < 40 || val > 600) {
+    alert('시간과 혈당 수치(40~600)를 올바르게 입력해주세요.');
+    return;
+  }
+  const idx = records.findIndex(r => r.id === editingId);
+  if (idx !== -1) {
+    records[idx] = { ...records[idx], time, val, tag };
+    records.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+    save();
+    renderAll();
+  }
+  document.getElementById('edit-modal').classList.remove('open');
+  editingId = null;
+}
+
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  // 주간 전용 UI 초기화
+  document.getElementById('chart-wrap').classList.remove('tall');
+  document.getElementById('week-legend').style.display = 'none';
+  renderChart(tab);
+}
+
+function renderChart(tab) {
+  const ctx = document.getElementById('myChart').getContext('2d');
+  if (chart) { chart.destroy(); chart = null; }
+
+  let labels = [], data = [], title = '';
+
+  if (tab === 'daily') {
+    title = '이번 주 일별 혈당 변화 (7일)';
+    document.getElementById('chart-title').textContent = title;
+    document.getElementById('chart-wrap').classList.add('tall');
+    document.getElementById('week-legend').style.display = 'flex';
+
+    // 이번 주 월~일 7일 날짜 구하기
+    const dayNames = ['일','월','화','수','목','금','토'];
+    const DAY_COLORS = ['#e74c3c','#e67e22','#f1c40f','#27ae60','#1abc9c','#2980b9','#8e44ad'];
+    const DAY_ALPHA  = [
+      'rgba(231,76,60,0.10)','rgba(230,126,34,0.10)','rgba(241,196,15,0.10)',
+      'rgba(39,174,96,0.10)','rgba(26,188,156,0.10)','rgba(41,128,185,0.10)','rgba(142,68,173,0.10)'
+    ];
+
+    // 이번 주 월요일 기준 7일
+    const today = new Date();
+    const dow = today.getDay(); // 0=일
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + mondayOffset + i);
+      weekDays.push(toDateStr(d));
+    }
+
+    // 측정 시점 순서 정의 (x축 고정 순서)
+    const TAG_ORDER = [
+      '기상','기상후2시간+','아침식후1시간','아침식후2시간',
+      '점심식후1시간','점심식후2시간','저녁식후1시간','저녁식후2시간','자기전'
+    ];
+    const TAG_SHORT = [
+      '기상','기상\n2h+','아침\n식후1h','아침\n식후2h',
+      '점심\n식후1h','점심\n식후2h','저녁\n식후1h','저녁\n식후2h','자기전'
+    ];
+    const SLOT_COUNT = TAG_ORDER.length;
+
+    const datasets = weekDays.map((dateStr, i) => {
+      const recs = records.filter(r => r.date === dateStr);
+      // 태그 기준으로 슬롯 매핑
+      const slotData = TAG_ORDER.map(tag => {
+        const rec = recs.find(r => r.tag === tag);
+        return rec ? rec.val : null;
+      });
+      const d = new Date(dateStr);
+      const label = `${dayNames[d.getDay()]}요일 (${dateStr.slice(5)})`;
+      return {
+        label,
+        data: slotData,
+        borderColor: DAY_COLORS[i],
+        backgroundColor: DAY_ALPHA[i],
+        pointBackgroundColor: slotData.map(v => v === null ? 'transparent' : DAY_COLORS[i]),
+        pointBorderColor:     slotData.map(v => v === null ? 'transparent' : DAY_COLORS[i]),
+        pointRadius: slotData.map(v => v === null ? 0 : 5),
+        pointHoverRadius: 7,
+        tension: 0.35,
+        fill: false,
+        borderWidth: 2,
+        spanGaps: true,
+      };
+    });
+
+    // 범례
+    const legendEl = document.getElementById('week-legend');
+    legendEl.innerHTML = datasets.map((ds, i) => `
+      <div class="wl-item">
+        <div class="wl-line" style="background:${DAY_COLORS[i]}"></div>
+        <span>${ds.label}</span>
+      </div>
+    `).join('');
+
+    // x축: 측정 시점 이름
+    const xLabels = TAG_SHORT;
+
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: xLabels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => TAG_ORDER[items[0].dataIndex],
+              label: (ctx) => {
+                const dateStr = weekDays[ctx.datasetIndex];
+                const tag = TAG_ORDER[ctx.dataIndex];
+                const rec = records.find(r => r.date === dateStr && r.tag === tag);
+                const timeStr = rec ? ` (${rec.time})` : '';
+                return ` ${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y !== null ? ctx.parsed.y + ' mg/dL' + timeStr : '기록 없음'}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            min: 40,
+            suggestedMax: 220,
+            grid: { color: '#e8e4de' },
+            ticks: { font: { family: 'DM Mono', size: 11 }, color: '#8a8480' }
+          },
+          x: {
+            grid: { color: '#f0ece8' },
+            ticks: {
+              font: { family: 'Noto Sans KR', size: 10 },
+              color: '#8a8480',
+              maxRotation: 0,
+              minRotation: 0,
+            }
+          }
+        }
+      }
+    });
+    return;
+
+  } else if (tab === 'weekly') {
+    title = '4주 일별 혈당 흐름 비교';
+    document.getElementById('chart-title').textContent = title;
+    document.getElementById('chart-wrap').classList.add('tall');
+    document.getElementById('week-legend').style.display = 'flex';
+
+    // 요일 레이블
+    const dayNames = ['일','월','화','수','목','금','토'];
+    const WEEK_COLORS = ['#2980b9','#27ae60','#e67e22','#8e44ad'];
+    const WEEK_ALPHA  = ['rgba(41,128,185,0.12)','rgba(39,174,96,0.12)','rgba(230,126,34,0.12)','rgba(142,68,173,0.12)'];
+
+    // 오늘 기준으로 4주(28일) 날짜 배열 생성
+    const allDays = [];
+    for (let i = 27; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      allDays.push(toDateStr(d));
+    }
+
+    // 4주 데이터셋
+    const datasets = [];
+    for (let w = 0; w < 4; w++) {
+      const weekDays = allDays.slice(w * 7, w * 7 + 7);
+      const startLabel = weekDays[0].slice(5);
+      const endLabel   = weekDays[6].slice(5);
+      const data = weekDays.map(d => {
+        const recs = records.filter(r => r.date === d);
+        if (!recs.length) return null;
+        return Math.round(recs.reduce((s, r) => s + r.val, 0) / recs.length);
+      });
+      datasets.push({
+        label: `${w+1}주차 (${startLabel}~${endLabel})`,
+        data,
+        borderColor: WEEK_COLORS[w],
+        backgroundColor: WEEK_ALPHA[w],
+        pointBackgroundColor: WEEK_COLORS[w],
+        pointBorderColor: WEEK_COLORS[w],
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.35,
+        fill: false,
+        borderWidth: 2,
+        spanGaps: true,
+      });
+    }
+
+    // 범례 렌더
+    const legendEl = document.getElementById('week-legend');
+    legendEl.innerHTML = datasets.map((ds, i) => `
+      <div class="wl-item">
+        <div class="wl-line" style="background:${WEEK_COLORS[i]}"></div>
+        <span>${ds.label}</span>
+      </div>
+    `).join('');
+
+    // x축 레이블: 1~7일차 (요일)
+    const xLabels = allDays.slice(0, 7).map(d => {
+      const day = new Date(d).getDay();
+      return dayNames[day] + '요일';
+    });
+
+    if (chart) { chart.destroy(); chart = null; }
+    const ctx = document.getElementById('myChart').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: xLabels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y + ' mg/dL' : '기록 없음'}`
+            }
+          }
+        },
+        scales: {
+          y: {
+            min: 40,
+            suggestedMax: 220,
+            grid: { color: '#e8e4de' },
+            ticks: { font: { family: 'DM Mono', size: 11 }, color: '#8a8480' }
+          },
+          x: {
+            grid: { color: '#f0ece8' },
+            ticks: { font: { family: 'Noto Sans KR', size: 11 }, color: '#8a8480' }
+          }
+        }
+      }
+    });
+    return;
+
+  } else {
+    title = '최근 30일 평균 혈당';
+    document.getElementById('chart-title').textContent = title;
+    const days = [];
+    for (let i=29; i>=0; i--) {
+      const d = new Date(); d.setDate(d.getDate()-i);
+      days.push(toDateStr(d));
+    }
+    // 주 단위로 묶기
+    const weeks = [];
+    for (let w=0; w<5; w++) {
+      const chunk = days.slice(w*6, w*6+6);
+      const wRecs = records.filter(r => chunk.includes(r.date));
+      const label = chunk[0]?.slice(5) + '~' + chunk[chunk.length-1]?.slice(5);
+      const avg = wRecs.length ? Math.round(wRecs.reduce((s,r)=>s+r.val,0)/wRecs.length) : null;
+      weeks.push({ label, avg });
+    }
+    labels = weeks.map(w=>w.label);
+    data   = weeks.map(w=>w.avg);
+    makeBarChart(ctx, labels, data, '주 평균 (mg/dL)');
+  }
+}
+
+function pointColor(val) {
+  if (val === null) return 'transparent';
+  if (val >= 126) return '#c0392b';  // 당뇨병 의심
+  if (val >= 100) return '#e67e22';  // 공복혈당장애(전당뇨)
+  return '#27ae60';                  // 정상
+}
+
+function makeLineChart(ctx, labels, data, yLabel) {
+  const ptColors = data.map(v => pointColor(v));
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: yLabel,
+        data,
+        borderColor: '#2980b9',
+        backgroundColor: 'rgba(41,128,185,0.08)',
+        pointBackgroundColor: ptColors,
+        pointBorderColor: ptColors,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        tension: 0.35,
+        fill: true,
+        borderWidth: 2,
+      }]
+    },
+    options: chartOptions(yLabel)
+  });
+}
+
+function makeBarChart(ctx, labels, data, yLabel) {
+  const barColors = data.map(v => v === null ? '#e2ddd6' : pointColor(v));
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: yLabel,
+        data,
+        backgroundColor: barColors,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: chartOptions(yLabel)
+  });
+}
+
+function chartOptions(yLabel) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.parsed.y ?? '데이터 없음'} mg/dL`
+        }
+      }
+    },
+    scales: {
+      y: {
+        min: 40,
+        suggestedMax: 220,
+        grid: { color: '#e8e4de' },
+        ticks: { font: { family: 'DM Mono', size: 11 }, color: '#8a8480' },
+        title: { display: false }
+      },
+      x: {
+        grid: { display: false },
+        ticks: { font: { family: 'DM Mono', size: 11 }, color: '#8a8480' }
+      }
+    }
+  };
+}
+</script>
+</body>
+</html>

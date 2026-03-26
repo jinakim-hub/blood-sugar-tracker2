@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>혈당 기록</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f4f1ec;
+    --surface: #fdfcfa;
+    --border: #e2ddd6;
+    --text: #1e1c19;
+    --muted: #8a8480;
+    --accent: #c0392b;
+    --safe: #27ae60;
+    --warn: #e67e22;
+    --danger: #c0392b;
+    --blue: #2980b9;
+    --period: #e91e8c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 16px 80px; }
+
+  header { text-align: center; margin-bottom: 20px; }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* 네비 */
+  .nav-tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 4px; margin-bottom: 20px; gap: 4px; }
+  .nav-tab { flex: 1; padding: 9px 4px; border: none; background: transparent; border-radius: 10px; font-size: 12px; font-weight: 500; font-family: 'Noto Sans KR', sans-serif; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .nav-tab.active { background: var(--accent); color: #fff; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* 카드 */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+
+  /* 입력 */
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .input-group { display: flex; flex-direction: column; gap: 5px; }
+  .input-group label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .input-group input, .input-group select, .text-input {
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px;
+    font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text); outline: none; transition: border-color 0.2s; width: 100%;
+  }
+  .input-group input:focus, .input-group select:focus, .text-input:focus { border-color: var(--accent); }
+  .text-input { font-family: 'Noto Sans KR', sans-serif; }
+
+  /* 버튼 */
+  .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; font-family: 'Noto Sans KR', sans-serif; cursor: pointer; transition: opacity 0.2s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-red { background: var(--accent); color: #fff; }
+  .btn-green { background: var(--safe); color: #fff; }
+  .btn-blue { background: var(--blue); color: #fff; }
+  .btn-pink { background: var(--period); color: #fff; }
+  .btn-ghost { background: var(--bg); color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+
+  /* 탭 */
+  .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; margin-bottom: 16px; gap: 4px; }
+  .tab { flex: 1; padding: 9px 4px; border: none; background: transparent; border-radius: 9px; font-size: 13px; font-weight: 500; font-family: 'Noto Sans KR', sans-serif; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+
+  /* 차트 */
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-wrap.tall { height: 280px; }
+  .week-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .wl-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+  .wl-line { width: 22px; height: 3px; border-radius: 2px; }
+
+  /* 통계 */
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+  .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; text-align: center; }
+  .stat-box .sv { font-size: 20px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .stat-box .sl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* 범위 */
+  .range-guide { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .rg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .rg-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* 기록 목록 */
+  .record-item { display: flex; align-items: center; justify-content: space-between; background: var(--bg); border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.15s; margin-bottom: 8px; }
+  .record-item:hover { background: #ede9e3; }
+  .record-label { font-size: 12px; color: var(--muted); }
+  .record-val { font-size: 18px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .record-val.safe { color: var(--safe); }
+  .record-val.warn { color: var(--warn); }
+  .record-val.danger { color: var(--danger); }
+  .record-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 6px; }
+  .record-del:hover { background: #f0ece8; }
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+  /* 생리 */
+  .period-btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .period-status { font-size: 13px; color: var(--muted); }
+  .period-status.active { color: var(--period); font-weight: 700; }
+  .period-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+  .period-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+
+  /* 타이머 */
+  .timer-display { font-size: 52px; font-weight: 700; font-family: 'DM Mono', monospace; text-align: center; margin: 16px 0; letter-spacing: 3px; }
+  .timer-display.running { color: var(--accent); }
+  .timer-display.done { color: var(--safe); }
+
+  /* 알람 */
+  .alarm-item { background: var(--bg); border-radius: 12px; padding: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .alarm-info { flex: 1; }
+  .alarm-time-lbl { font-size: 22px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .alarm-note { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .alarm-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px 8px; }
+  .alarm-toggle { position: relative; width: 44px; height: 24px; background: var(--border); border-radius: 12px; cursor: pointer; border: none; transition: background 0.2s; flex-shrink: 0; }
+  .alarm-toggle.on { background: var(--safe); }
+  .alarm-toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: left 0.2s; }
+  .alarm-toggle.on::after { left: 23px; }
+
+  /* 모달 공통 */
+  .modal-overlay, .alarm-modal, .quick-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.open, .alarm-modal.open, .quick-modal.open { display: flex; }
+  .modal-box { background: var(--surface); border-radius: 20px; padding: 24px; width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  .modal-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .btn-save { flex: 1; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; font-family: 'Noto Sans KR', sans-serif; cursor: pointer; }
+  .btn-cancel { flex: 1; padding: 11px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-weight: 500; font-family: 'Noto Sans KR', sans-serif; cursor: pointer; }
+
+  /* 알람 울림 */
+  .alarm-fire-box { background: var(--surface); border-radius: 24px; padding: 32px 24px; width: 100%; max-width: 340px; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,0.25); animation: popIn 0.3s ease; }
+  @keyframes popIn { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .alarm-icon { font-size: 52px; margin-bottom: 12px; display: inline-block; animation: ring 0.5s ease infinite alternate; }
+  @keyframes ring { from { transform: rotate(-15deg); } to { transform: rotate(15deg); } }
+  .alarm-msg { font-size: 18px; font-weight: 700; margin-bottom: 8px; line-height: 1.5; }
+  .alarm-sub { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+  .btn-dismiss { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; font-family: 'Noto Sans KR', sans-serif; cursor: pointer; margin-bottom: 8px; }
+  .btn-snooze { width: 100%; padding: 11px; background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; font-size: 13px; font-family: 'Noto Sans KR', sans-serif; cursor: pointer; }
+
+  /* 빠른 기록 */
+  .qr-time { text-align: center; font-size: 30px; font-weight: 700; font-family: 'DM Mono', monospace; color: var(--accent); margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🩸 혈당 기록</h1>
+  <p>하루 8회 측정 · 일간 / 주간 / 월간 그래프</p>
+</header>
+
+<div class="nav-tabs">
+  <button class="nav-tab active" onclick="switchPage('home',this)">📊 기록</button>
+  <button class="nav-tab" onclick="switchPage('timer',this)">⏱ 타이머</button>
+  <button class="nav-tab" onclick="switchPage('alarm',this)">⏰ 알람</button>
+</div>
+
+<!-- ===== 홈 ===== -->
+<div id="page-home" class="page active">
+
+  <div class="card">
+    <h2>측정값 입력</h2>
+    <div class="input-grid">
+      <div class="input-group"><label>날짜</label><input type="date" id="inp-date"></div>
+      <div class="input-group"><label>시간</label><input type="time" id="inp-time"></div>
+      <div class="input-group"><label>혈당 (mg/dL)</label><input type="number" id="inp-val" placeholder="예: 110" min="40" max="600"></div>
+      <div class="input-group">
+        <label>측정 시점</label>
+        <select id="inp-tag">
+          <option value="기상">기상</option><option value="기상후2시간+">기상후 2시간+</option>
+          <option value="아침식전">아침식전</option><option value="아침식후2시간">아침식후 2시간</option>
+          <option value="점심식전">점심식전</option><option value="점심식후2시간">점심식후 2시간</option>
+          <option value="저녁식전">저녁식전</option><option value="저녁식후2시간">저녁식후 2시간</option>
+          <option value="자기전">자기전</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-red" onclick="addRecord()">+ 혈당 기록 추가</button>
+  </div>
+
+  <div class="card">
+    <h2>⚖️ 체지방 기록 <span style="font-size:12px;font-weight:400;color:var(--muted)">· 하루 1회</span></h2>
+    <div id="fat-today-info" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
+    <div class="input-grid">
+      <div class="input-group"><label>날짜</label><input type="date" id="fat-date"></div>
+      <div class="input-group"><label>체지방 무게 (kg)</label><input type="number" id="fat-val" placeholder="예: 18.5" min="1" max="200" step="0.1"></div>
+    </div>
+    <button class="btn btn-green" id="btn-fat-add" onclick="addFatRecord()">+ 체지방 기록 추가</button>
+  </div>
+
+  <!-- 생리기간 -->
+  <div class="card">
+    <h2>🌸 생리기간 기록</h2>
+    <div class="period-btn-row">
+      <button class="btn btn-pink" style="flex:1" onclick="startPeriod()">🩸 오늘 시작</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="endPeriod()">✓ 오늘 종료</button>
+    </div>
+    <div class="period-status" id="period-status">현재 생리 기간이 아니에요</div>
+    <div id="period-history" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- 통계 -->
+  <div class="stats-row">
+    <div class="stat-box"><div class="sv" id="s-avg">—</div><div class="sl">오늘 평균</div></div>
+    <div class="stat-box"><div class="sv" id="s-min">—</div><div class="sl">최저</div></div>
+    <div class="stat-box"><div class="sv" id="s-max">—</div><div class="sl">최고</div></div>
+  </div>
+
+  <!-- 차트 탭 -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('daily',this)">일간</button>
+    <button class="tab" onclick="switchTab('weekly',this)">주간</button>
+    <button class="tab" onclick="switchTab('monthly',this)">월간</button>
+  </div>
+
+  <div class="card">
+    <h2 id="chart-title">오늘 혈당 변화</h2>
+    <div class="week-legend" id="week-legend" style="display:none"></div>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap;" id="chart-legend-row">
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+        <div style="width:22px;height:2px;background:#2980b9;border-radius:2px;"></div>혈당 왼쪽축
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+        <div style="width:22px;height:2px;background:#1e1c19;border-top:2px dashed #1e1c19;"></div>체지방 오른쪽축
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+        <div style="width:22px;height:5px;background:rgba(233,30,140,0.4);border-radius:2px;"></div>생리기간
+      </div>
+    </div>
+    <div class="chart-wrap" id="chart-wrap"><canvas id="myChart"></canvas></div>
+  </div>
+
+  <div class="range-guide">
+    <div class="rg-item"><div class="rg-dot" style="background:var(--safe)"></div>정상 (100 미만)</div>
+    <div class="rg-item"><div class="rg-dot" style="background:var(--warn)"></div>전당뇨 (100–125)</div>
+    <div class="rg-item"><div class="rg-dot" style="background:var(--danger)"></div>당뇨병 의심 (126+)</div>
+  </div>
+  <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:16px;margin-top:-12px;">대한당뇨병학회 공복혈당 기준</div>
+
+  <div class="card">
+    <h2>측정 기록 <span style="font-size:12px;font-weight:400;color:var(--muted)">· 항목 탭하면 수정</span></h2>
+    <div id="record-list" style="max-height:420px;overflow-y:auto;"><div class="empty">아직 기록이 없습니다.</div></div>
+  </div>
+
+</div>
+
+<!-- ===== 타이머 ===== -->
+<div id="page-timer" class="page">
+  <div class="card" style="text-align:center;">
+    <h2 style="text-align:left;">🍽 식후 혈당 타이머</h2>
+    <p style="font-size:12px;color:var(--muted);text-align:left;margin-bottom:16px;">식사 시작 버튼을 누르면 2시간 후 알림이 와요</p>
+    <div style="margin-bottom:14px;text-align:left;">
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">식사 메모 (선택)</label>
+      <input type="text" class="text-input" id="meal-memo" placeholder="예: 점심 — 비빔밥">
+    </div>
+    <div class="timer-display" id="timer-display">02:00:00</div>
+    <button class="btn btn-blue" id="btn-timer" onclick="startTimer()">🍚 식사 시작</button>
+    <button class="btn btn-ghost" id="btn-timer-cancel" style="display:none;margin-top:8px;" onclick="cancelTimer()">타이머 취소</button>
+  </div>
+  <div class="card" id="timer-recent" style="display:none;">
+    <h2 style="font-size:13px;color:var(--muted);font-weight:500;margin-bottom:10px;">최근 타이머 기록</h2>
+    <div id="timer-history-list"></div>
+  </div>
+</div>
+
+<!-- ===== 알람 ===== -->
+<div id="page-alarm" class="page">
+  <div class="card">
+    <h2>⏰ 알람 추가</h2>
+    <div class="input-grid" style="margin-bottom:10px;">
+      <div class="input-group"><label>알람 시간</label><input type="time" id="alarm-time-inp"></div>
+      <div class="input-group">
+        <label>측정 시점 (알람 후 기록)</label>
+        <select id="alarm-tag-inp">
+          <option value="기상">기상</option><option value="기상후2시간+">기상후 2시간+</option>
+          <option value="아침식전">아침식전</option><option value="아침식후2시간">아침식후 2시간</option>
+          <option value="점심식전">점심식전</option><option value="점심식후2시간">점심식후 2시간</option>
+          <option value="저녁식전">저녁식전</option><option value="저녁식후2시간">저녁식후 2시간</option>
+          <option value="자기전">자기전</option>
+        </select>
+      </div>
+    </div>
+    <div class="input-group" style="margin-bottom:12px;">
+      <label>알람 후 할 일 메모 <span style="font-weight:400;color:var(--muted)">(알람이 울리면 표시돼요)</span></label>
+      <input type="text" class="text-input" id="alarm-note-inp" placeholder="예: 기상 혈당 재고 기록하자 화이팅!">
+    </div>
+    <button class="btn btn-red" onclick="addAlarm()">+ 알람 추가</button>
+  </div>
+  <div class="card">
+    <h2>알람 목록</h2>
+    <div id="alarm-list"><div class="empty">설정된 알람이 없어요</div></div>
+  </div>
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-overlay" id="edit-modal" onclick="closeEditModal(event)">
+  <div class="modal-box">
+    <h3>✏️ 기록 수정</h3>
+    <div class="input-grid">
+      <div class="input-group"><label>시간</label><input type="time" id="edit-time"></div>
+      <div class="input-group"><label>혈당 (mg/dL)</label><input type="number" id="edit-val" min="40" max="600"></div>
+    </div>
+    <div class="input-group">
+      <label>측정 시점</label>
+      <select id="edit-tag">
+        <option value="기상">기상</option><option value="기상후2시간+">기상후 2시간+</option>
+        <option value="아침식전">아침식전</option><option value="아침식후2시간">아침식후 2시간</option>
+        <option value="점심식전">점심식전</option><option value="점심식후2시간">점심식후 2시간</option>
+        <option value="저녁식전">저녁식전</option><option value="저녁식후2시간">저녁식후 2시간</option>
+        <option value="자기전">자기전</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeEditModal()">취소</button>
+      <button class="btn-save" onclick="saveEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 알람 울림 모달 -->
+<div class="alarm-modal" id="alarm-fire-modal">
+  <div class="alarm-fire-box">
+    <div class="alarm-icon">⏰</div>
+    <div class="alarm-msg" id="alarm-fire-msg">알람이에요!</div>
+    <div class="alarm-sub" id="alarm-fire-sub"></div>
+    <button class="btn-dismiss" onclick="dismissAlarm()">확인 — 혈당 재러 가기! 💪</button>
+    <button class="btn-snooze" onclick="snoozeAlarm()">5분 후 다시 알림</button>
+  </div>
+</div>
+
+<!-- 타이머 완료 모달 -->
+<div class="alarm-modal" id="timer-done-modal">
+  <div class="alarm-fire-box">
+    <div class="alarm-icon">🍽</div>
+    <div class="alarm-msg" id="timer-done-msg">식사 2시간이 지났어요!</div>
+    <div class="alarm-sub">지금 식후 혈당을 재고 기록해보세요 💪</div>
+    <button class="btn-dismiss" onclick="dismissTimerModal()">확인 — 혈당 재러 가기!</button>
+    <button class="btn-snooze" onclick="snoozeTimerModal()">10분 후 다시 알림</button>
+  </div>
+</div>
+
+<!-- 빠른 기록 모달 -->
+<div class="quick-modal" id="quick-modal">
+  <div class="modal-box">
+    <h3>🩸 혈당 기록하기</h3>
+    <div class="qr-time" id="qr-time"></div>
+    <div class="input-grid">
+      <div class="input-group"><label>혈당 (mg/dL)</label><input type="number" id="qr-val" placeholder="예: 110" min="40" max="600"></div>
+      <div class="input-group">
+        <label>측정 시점</label>
+        <select id="qr-tag">
+          <option value="기상">기상</option><option value="기상후2시간+">기상후 2시간+</option>
+          <option value="아침식전">아침식전</option><option value="아침식후2시간">아침식후 2시간</option>
+          <option value="점심식전">점심식전</option><option value="점심식후2시간">점심식후 2시간</option>
+          <option value="저녁식전">저녁식전</option><option value="저녁식후2시간">저녁식후 2시간</option>
+          <option value="자기전">자기전</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeQuickModal()">나중에</button>
+      <button class="btn-save" onclick="saveQuickRecord()">저장!</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY   = 'blood_sugar_records_v1';
+const FAT_KEY       = 'body_fat_records_v1';
+const PERIOD_KEY    = 'period_records_v2';
+const ALARM_KEY     = 'alarm_records_v1';
+const TIMER_HIS_KEY = 'timer_history_v1';
+
+let records      = [];
+let fatRecords   = [];
+let periodData   = { active: null, history: [] };
+let alarms       = [];
+let timerHistory = [];
+let currentTab   = 'daily';
+let chart        = null;
+let editingId    = null;
+let currentAlarmFiring = null;
+let timerInterval = null;
+let timerEndTime  = null;
+
+window.onload = () => {
+  try { records     = JSON.parse(localStorage.getItem(STORAGE_KEY)   || '[]'); } catch(e){}
+  try { fatRecords  = JSON.parse(localStorage.getItem(FAT_KEY)        || '[]'); } catch(e){}
+  try { periodData  = JSON.parse(localStorage.getItem(PERIOD_KEY)     || '{"active":null,"history":[]}'); } catch(e){}
+  try { alarms      = JSON.parse(localStorage.getItem(ALARM_KEY)      || '[]'); } catch(e){}
+  try { timerHistory= JSON.parse(localStorage.getItem(TIMER_HIS_KEY)  || '[]'); } catch(e){}
+
+  const now = new Date();
+  document.getElementById('inp-date').value = toDateStr(now);
+  document.getElementById('inp-time').value = toTimeStr(now);
+  document.getElementById('fat-date').value = toDateStr(now);
+
+  renderAll(); renderFatInfo(); renderPeriodUI(); renderAlarmList(); renderTimerHistory();
+  setInterval(checkAlarms, 30000); checkAlarms();
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+};
+
+const save       = () => localStorage.setItem(STORAGE_KEY,   JSON.stringify(records));
+const saveFat    = () => localStorage.setItem(FAT_KEY,        JSON.stringify(fatRecords));
+const savePeriod = () => localStorage.setItem(PERIOD_KEY,     JSON.stringify(periodData));
+const saveAlarms = () => localStorage.setItem(ALARM_KEY,      JSON.stringify(alarms));
+const saveTimerH = () => localStorage.setItem(TIMER_HIS_KEY,  JSON.stringify(timerHistory));
+
+function toDateStr(d) { return d.toISOString().slice(0,10); }
+function toTimeStr(d) { return d.toTimeString().slice(0,5); }
+function getLevel(v) { return v >= 126 ? 'danger' : v >= 100 ? 'warn' : 'safe'; }
+
+// ── 페이지 ──────────────────────────────────────────────
+function switchPage(page, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── 혈당 기록 ────────────────────────────────────────────
+function addRecord() {
+  const date = document.getElementById('inp-date').value;
+  const time = document.getElementById('inp-time').value;
+  const val  = parseInt(document.getElementById('inp-val').value);
+  const tag  = document.getElementById('inp-tag').value;
+  if (!date || !time || isNaN(val) || val < 40 || val > 600) { alert('날짜, 시간, 혈당 수치(40~600)를 올바르게 입력해주세요.'); return; }
+  records.push({ date, time, val, tag, id: Date.now() });
+  records.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  save(); document.getElementById('inp-val').value = ''; renderAll();
+}
+
+function deleteRecord(id) { records = records.filter(r => r.id !== id); save(); renderAll(); }
+
+function openEdit(id) {
+  const rec = records.find(r => r.id === id); if (!rec) return;
+  editingId = id;
+  document.getElementById('edit-time').value = rec.time;
+  document.getElementById('edit-val').value  = rec.val;
+  document.getElementById('edit-tag').value  = rec.tag;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEditModal(e) {
+  if (e && e.target !== document.getElementById('edit-modal')) return;
+  document.getElementById('edit-modal').classList.remove('open'); editingId = null;
+}
+
+function saveEdit() {
+  const time = document.getElementById('edit-time').value;
+  const val  = parseInt(document.getElementById('edit-val').value);
+  const tag  = document.getElementById('edit-tag').value;
+  if (!time || isNaN(val) || val < 40 || val > 600) { alert('시간과 혈당 수치(40~600)를 올바르게 입력해주세요.'); return; }
+  const idx = records.findIndex(r => r.id === editingId);
+  if (idx !== -1) { records[idx] = { ...records[idx], time, val, tag }; records.sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time)); save(); renderAll(); }
+  document.getElementById('edit-modal').classList.remove('open'); editingId = null;
+}
+
+// ── 체지방 ───────────────────────────────────────────────
+function addFatRecord() {
+  const date = document.getElementById('fat-date').value;
+  const val  = parseFloat(document.getElementById('fat-val').value);
+  if (!date || isNaN(val) || val < 1 || val > 200) { alert('날짜와 체지방 무게(1~200kg)를 올바르게 입력해주세요.'); return; }
+  const existing = fatRecords.findIndex(r => r.date === date);
+  if (existing !== -1) {
+    if (!confirm(date + ' 기록이 이미 있어요\n' + fatRecords[existing].val + 'kg → ' + val + 'kg으로 덮어쓸까요?')) return;
+    fatRecords[existing].val = val;
+  } else { fatRecords.push({ date, val, id: Date.now() }); }
+  fatRecords.sort((a,b) => a.date.localeCompare(b.date));
+  saveFat(); document.getElementById('fat-val').value = ''; renderFatInfo(); renderChart(currentTab);
+}
+
+function renderFatInfo() {
+  const today = toDateStr(new Date());
+  const todayRec = fatRecords.find(r => r.date === today);
+  const el = document.getElementById('fat-today-info');
+  if (todayRec) { el.innerHTML = '<span style="color:#27ae60;font-weight:700;">오늘 기록됨: ' + todayRec.val + 'kg</span>'; document.getElementById('btn-fat-add').textContent = '✏️ 오늘 기록 수정'; }
+  else { el.innerHTML = '오늘 아직 기록이 없어요'; document.getElementById('btn-fat-add').textContent = '+ 체지방 기록 추가'; }
+}
+
+// ── 생리기간 ─────────────────────────────────────────────
+function startPeriod() {
+  const today = toDateStr(new Date());
+  if (periodData.active) { alert('이미 생리 기간이 진행 중이에요 (' + periodData.active.start + ' ~)'); return; }
+  periodData.active = { start: today, end: null };
+  savePeriod(); renderPeriodUI(); renderChart(currentTab);
+}
+
+function endPeriod() {
+  const today = toDateStr(new Date());
+  if (!periodData.active) { alert('시작 기록이 없어요. 먼저 시작일을 기록해주세요.'); return; }
+  periodData.active.end = today;
+  periodData.history.unshift({ ...periodData.active, id: Date.now() });
+  periodData.active = null;
+  savePeriod(); renderPeriodUI(); renderChart(currentTab);
+}
+
+function deletePeriod(id) { periodData.history = periodData.history.filter(p => p.id !== id); savePeriod(); renderPeriodUI(); renderChart(currentTab); }
+
+function renderPeriodUI() {
+  const statusEl = document.getElementById('period-status');
+  if (periodData.active) { statusEl.textContent = '🩸 현재 진행 중 (' + periodData.active.start + ' ~)'; statusEl.className = 'period-status active'; }
+  else { statusEl.textContent = '현재 생리 기간이 아니에요'; statusEl.className = 'period-status'; }
+  const histEl = document.getElementById('period-history');
+  if (!periodData.history.length) { histEl.innerHTML = ''; return; }
+  histEl.innerHTML = '<div style="font-size:12px;color:var(--muted);margin:10px 0 6px;">지난 기록</div>' +
+    periodData.history.slice(0,6).map(p => `<div class="period-item"><span style="color:var(--period)">🩸</span><span>${p.start} ~ ${p.end||'진행중'}</span><button class="period-del" onclick="deletePeriod(${p.id})">✕</button></div>`).join('');
+}
+
+function isInPeriod(dateStr) {
+  const all = [...periodData.history];
+  if (periodData.active) all.push(periodData.active);
+  return all.some(p => p.end ? dateStr >= p.start && dateStr <= p.end : dateStr >= p.start);
+}
+
+// ── 통계 + 목록 ──────────────────────────────────────────
+function renderAll() { renderStats(); renderList(); renderChart(currentTab); }
+
+function renderStats() {
+  const today = toDateStr(new Date());
+  const vals = records.filter(r => r.date === today).map(r => r.val);
+  if (!vals.length) { ['s-avg','s-min','s-max'].forEach(id => document.getElementById(id).textContent = '—'); return; }
+  document.getElementById('s-avg').textContent = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  document.getElementById('s-min').textContent = Math.min(...vals);
+  document.getElementById('s-max').textContent = Math.max(...vals);
+}
+
+function renderList() {
+  const el = document.getElementById('record-list');
+  if (!records.length) { el.innerHTML = '<div class="empty">아직 기록이 없습니다.</div>'; return; }
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const today = toDateStr(new Date());
+  const grouped = {};
+  records.forEach(r => { if (!grouped[r.date]) grouped[r.date]=[]; grouped[r.date].push(r); });
+  el.innerHTML = Object.keys(grouped).sort().reverse().map(date => {
+    const recs = grouped[date].slice().sort((a,b)=>a.time.localeCompare(b.time));
+    const d = new Date(date+'T00:00:00');
+    const hasPeriod = isInPeriod(date);
+    const dateLbl = date+' ('+dayNames[d.getDay()]+')'+(date===today?' · 오늘':'')+(hasPeriod?' 🩸':'');
+    return `<div style="font-size:11px;font-weight:800;color:${date===today?'var(--accent)':'var(--muted)'};padding:10px 4px 4px;border-top:1px solid var(--border);margin-top:4px;">${dateLbl} · ${recs.length}건</div>` +
+      recs.map(r => `<div class="record-item" onclick="openEdit(${r.id})"><div><div class="record-label">${r.tag} · ${r.time}</div></div><div class="record-val ${getLevel(r.val)}">${r.val} <span style="font-size:12px;font-weight:400">mg/dL</span></div><button class="record-del" onclick="event.stopPropagation();deleteRecord(${r.id})">✕</button></div>`).join('');
+  }).join('');
+}
+
+// ── 차트 ─────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('chart-wrap').classList.remove('tall');
+  document.getElementById('week-legend').style.display = 'none';
+  renderChart(tab);
+}
+
+function pointColor(val) {
+  if (val === null) return 'transparent';
+  return val >= 126 ? '#c0392b' : val >= 100 ? '#e67e22' : '#27ae60';
+}
+
+// 생리기간 배경 플러그인 생성
+function makePeriodPlugin(indexToDate) {
+  return {
+    id: 'periodBg',
+    beforeDraw(ch) {
+      const { ctx, chartArea: ca, scales } = ch;
+      if (!ca || !scales.x) return;
+      ctx.save();
+      const xScale = scales.x;
+      const step = xScale.getPixelForValue(1) - xScale.getPixelForValue(0);
+      const count = xScale.max - xScale.min + 1;
+      for (let i = 0; i <= xScale.max; i++) {
+        const dateStr = indexToDate(i);
+        if (!dateStr || !isInPeriod(dateStr)) continue;
+        const xCenter = xScale.getPixelForValue(i);
+        const x0 = xCenter - step/2;
+        const w  = step;
+        // 하단 생리기간 바
+        ctx.fillStyle = 'rgba(233,30,140,0.55)';
+        ctx.fillRect(x0, ca.bottom - 7, w, 7);
+        // 배경 연하게
+        ctx.fillStyle = 'rgba(233,30,140,0.06)';
+        ctx.fillRect(x0, ca.top, w, ca.bottom - ca.top - 7);
+      }
+      ctx.restore();
+    }
+  };
+}
+
+function renderChart(tab) {
+  if (chart) { chart.destroy(); chart = null; }
+  const ctx = document.getElementById('myChart').getContext('2d');
+  if (tab === 'daily') renderDailyChart(ctx);
+  else if (tab === 'weekly') renderWeeklyChart(ctx);
+  else renderMonthlyChart(ctx);
+}
+
+function renderDailyChart(ctx) {
+  document.getElementById('chart-title').textContent = '이번 주 일별 혈당 변화 (7일)';
+  document.getElementById('chart-wrap').classList.add('tall');
+  document.getElementById('week-legend').style.display = 'flex';
+
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const DAY_COLORS = ['#e74c3c','#e67e22','#f1c40f','#27ae60','#2980b9','#ff69b4','#8e44ad'];
+  const DAY_ALPHA  = ['rgba(231,76,60,0.10)','rgba(230,126,34,0.10)','rgba(241,196,15,0.10)','rgba(39,174,96,0.10)','rgba(41,128,185,0.10)','rgba(255,105,180,0.10)','rgba(142,68,173,0.10)'];
+  const today = new Date();
+  const dow = today.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const weekDays = [];
+  for (let i=0;i<7;i++) { const d=new Date(today); d.setDate(today.getDate()+mondayOffset+i); weekDays.push(toDateStr(d)); }
+  const TAG_ORDER = ['기상','기상후2시간+','아침식전','아침식후2시간','점심식전','점심식후2시간','저녁식전','저녁식후2시간','자기전'];
+  const TAG_SHORT = ['기상','기상\n2h+','아침\n식전','아침\n식후2h','점심\n식전','점심\n식후2h','저녁\n식전','저녁\n식후2h','자기전'];
+
+  const datasets = weekDays.map((dateStr,i) => {
+    const recs = records.filter(r=>r.date===dateStr);
+    const slotData = TAG_ORDER.map(tag=>{ const rec=recs.find(r=>r.tag===tag); return rec?rec.val:null; });
+    const d = new Date(dateStr);
+    const hasPeriod = isInPeriod(dateStr);
+    return {
+      label: (hasPeriod?'🩸 ':'')+dayNames[d.getDay()]+'요일 ('+dateStr.slice(5)+')',
+      data: slotData, borderColor: DAY_COLORS[i], backgroundColor: DAY_ALPHA[i],
+      pointBackgroundColor: slotData.map(v=>pointColor(v)), pointBorderColor: slotData.map(v=>pointColor(v)),
+      pointRadius: slotData.map(v=>v===null?0:6), pointHoverRadius:8, tension:0.35, fill:false, borderWidth:2, spanGaps:true,
+    };
+  });
+
+  document.getElementById('week-legend').innerHTML = datasets.map((ds,i)=>`<div class="wl-item"><div class="wl-line" style="background:${DAY_COLORS[i]}"></div><span>${ds.label}</span></div>`).join('');
+
+  // 일간 탭은 x축이 태그 슬롯 → 생리기간 배경은 날짜 단위가 아니므로 해당 날짜 선 색상으로 표시
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: TAG_SHORT, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: (items) => TAG_ORDER[items[0].dataIndex],
+          label: (c) => {
+            const dateStr = weekDays[c.datasetIndex];
+            const rec = records.find(r=>r.date===dateStr&&r.tag===TAG_ORDER[c.dataIndex]);
+            return ` ${c.dataset.label.replace('🩸 ','').split(' ')[0]}: ${c.parsed.y!==null?c.parsed.y+' mg/dL'+(rec?' ('+rec.time+')':''):'기록 없음'}`;
+          }
+        }}
+      },
+      scales: {
+        y: { min:40, suggestedMax:135, grid:{color:'#e8e4de'}, ticks:{font:{family:'DM Mono',size:11},color:'#8a8480'} },
+        x: { grid:{color:'#f0ece8'}, ticks:{font:{family:'Noto Sans KR',size:10},color:'#8a8480',maxRotation:0,minRotation:0} }
+      }
+    }
+  });
+}
+
+function renderWeeklyChart(ctx) {
+  document.getElementById('chart-title').textContent = '4주 일별 혈당 흐름 비교';
+  document.getElementById('chart-wrap').classList.add('tall');
+  document.getElementById('week-legend').style.display = 'flex';
+
+  const dayNames = ['일','월','화','수','목','금','토'];
+  const WEEK_COLORS = ['#2980b9','#27ae60','#e67e22','#8e44ad'];
+  const WEEK_ALPHA  = ['rgba(41,128,185,0.12)','rgba(39,174,96,0.12)','rgba(230,126,34,0.12)','rgba(142,68,173,0.12)'];
+  const allDays = [];
+  for (let i=27;i>=0;i--) { const d=new Date(); d.setDate(d.getDate()-i); allDays.push(toDateStr(d)); }
+
+  const datasets = [];
+  for (let w=0;w<4;w++) {
+    const weekDays = allDays.slice(w*7, w*7+7);
+    const data = weekDays.map(d => { const recs=records.filter(r=>r.date===d); return recs.length?Math.round(recs.reduce((s,r)=>s+r.val,0)/recs.length):null; });
+    datasets.push({ label:`${w+1}주차 (${weekDays[0].slice(5)}~${weekDays[6].slice(5)})`, data, borderColor:WEEK_COLORS[w], backgroundColor:WEEK_ALPHA[w], pointBackgroundColor:WEEK_COLORS[w], pointBorderColor:WEEK_COLORS[w], pointRadius:5, pointHoverRadius:7, tension:0.35, fill:false, borderWidth:2, spanGaps:true });
+  }
+  const thisWeekDays = allDays.slice(21,28);
+  const fatByDay = thisWeekDays.map(d => { const r=fatRecords.find(r=>r.date===d); return r?r.val:null; });
+  datasets.push({ label:'체지방 (kg)', data:fatByDay, borderColor:'#1e1c19', backgroundColor:'transparent', borderDash:[5,3], pointBackgroundColor:fatByDay.map(v=>v===null?'transparent':'#1e1c19'), pointBorderColor:fatByDay.map(v=>v===null?'transparent':'#1e1c19'), pointRadius:fatByDay.map(v=>v===null?0:3), pointHoverRadius:5, tension:0.35, fill:false, borderWidth:2.5, spanGaps:true, yAxisID:'yFat' });
+
+  document.getElementById('week-legend').innerHTML = datasets.slice(0,4).map((ds,i)=>`<div class="wl-item"><div class="wl-line" style="background:${WEEK_COLORS[i]}"></div><span>${ds.label}</span></div>`).join('')+`<div class="wl-item"><div class="wl-line" style="background:#1e1c19;border-top:2px dashed #1e1c19;height:0;margin-top:1px;"></div><span>체지방</span></div>`;
+
+  const xLabels = allDays.slice(0,7).map(d=>{ const day=new Date(d).getDay(); return dayNames[day]+'요일'; });
+  // 생리기간 플러그인: 이번 주(마지막 7일) 날짜 기준
+  const periodPlugin = makePeriodPlugin(i => thisWeekDays[i]);
+
+  chart = new Chart(ctx, {
+    type:'line', data:{labels:xLabels, datasets},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{ callbacks:{ title:(items)=>items[0].label, label:(c)=>{ const u=c.dataset.yAxisID==='yFat'?'kg':'mg/dL'; return ` ${c.dataset.label}: ${c.parsed.y!==null?c.parsed.y+' '+u:'기록 없음'}`; } } } },
+      scales: {
+        y:{min:40,suggestedMax:135,position:'left',grid:{color:'#e8e4de'},ticks:{font:{family:'DM Mono',size:11},color:'#8a8480'}},
+        yFat:{display:true,min:20,max:40,position:'right',grid:{drawOnChartArea:false},ticks:{font:{family:'DM Mono',size:11},color:'#1e1c19',callback:v=>v+'kg'},title:{display:true,text:'체지방 (kg)',color:'#1e1c19',font:{size:10}}},
+        x:{grid:{color:'#f0ece8'},ticks:{font:{family:'Noto Sans KR',size:11},color:'#8a8480'}}
+      }
+    },
+    plugins: [periodPlugin]
+  });
+}
+
+function renderMonthlyChart(ctx) {
+  document.getElementById('chart-title').textContent = '최근 30일 혈당 누적 기록';
+  document.getElementById('chart-wrap').classList.add('tall');
+  document.getElementById('week-legend').style.display = 'none';
+
+  const days = [];
+  for (let i=29;i>=0;i--) { const d=new Date(); d.setDate(d.getDate()-i); days.push(toDateStr(d)); }
+
+  const safePoints=[], warnPoints=[], dangerPoints=[];
+  days.forEach((day,xi) => {
+    records.filter(r=>r.date===day).forEach(r=>{
+      const pt={x:xi,y:r.val};
+      if(r.val>=126) dangerPoints.push(pt);
+      else if(r.val>=100) warnPoints.push(pt);
+      else safePoints.push(pt);
+    });
+  });
+
+  const avgData = days.map((day,xi)=>{
+    const recs=records.filter(r=>r.date===day);
+    return { x:xi, y:recs.length?Math.round(recs.reduce((s,r)=>s+r.val,0)/recs.length):null };
+  });
+
+  const fatData = days.map((day,xi)=>{ const r=fatRecords.find(r=>r.date===day); return {x:xi,y:r?r.val:null}; });
+
+  const datasets = [
+    { type:'scatter', label:'정상', data:safePoints, backgroundColor:'rgba(39,174,96,0.65)', borderColor:'rgba(39,174,96,0.9)', pointRadius:5, pointHoverRadius:7 },
+    { type:'scatter', label:'전당뇨', data:warnPoints, backgroundColor:'rgba(230,126,34,0.7)', borderColor:'rgba(230,126,34,0.95)', pointRadius:5, pointHoverRadius:7 },
+    { type:'scatter', label:'당뇨의심', data:dangerPoints, backgroundColor:'rgba(192,57,43,0.7)', borderColor:'rgba(192,57,43,0.95)', pointRadius:5, pointHoverRadius:7 },
+    { type:'line', label:'일별 평균', data:avgData, borderColor:'#2980b9', backgroundColor:'transparent', borderWidth:2, pointRadius:0, tension:0.35, spanGaps:true, fill:false },
+    { type:'line', label:'체지방 (kg)', data:fatData, borderColor:'#1e1c19', backgroundColor:'transparent', borderDash:[5,3], borderWidth:2, pointRadius:fatData.map(p=>p.y===null?0:3), tension:0.35, spanGaps:true, fill:false, yAxisID:'yFat' }
+  ];
+
+  const periodPlugin = makePeriodPlugin(i => days[i]);
+
+  chart = new Chart(ctx, {
+    data:{labels:days.map((_,i)=>i), datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false, parsing:false,
+      plugins:{
+        legend:{display:true,position:'bottom',labels:{font:{family:'Noto Sans KR',size:11},boxWidth:10,padding:10}},
+        tooltip:{callbacks:{
+          title:(items)=>days[items[0].raw?.x??items[0].dataIndex],
+          label:(c)=>{ const u=c.dataset.yAxisID==='yFat'?'kg':'mg/dL'; const y=c.raw?.y??c.parsed?.y; return ` ${c.dataset.label}: ${y!=null?y+' '+u:'없음'}`; }
+        }}
+      },
+      scales:{
+        x:{type:'linear',min:0,max:29,grid:{color:'#f0ece8'},ticks:{font:{family:'DM Mono',size:10},color:'#8a8480',callback:(v)=>{ const i=Math.round(v); return i%5===0&&days[i]?days[i].slice(5):''; },stepSize:1}},
+        y:{min:40,suggestedMax:200,position:'left',grid:{color:'#e8e4de'},ticks:{font:{family:'DM Mono',size:11},color:'#8a8480'}},
+        yFat:{display:true,min:20,max:40,position:'right',grid:{drawOnChartArea:false},ticks:{font:{family:'DM Mono',size:11},color:'#1e1c19',callback:v=>v+'kg'}}
+      }
+    },
+    plugins:[periodPlugin]
+  });
+}
+
+// ── 타이머 ────────────────────────────────────────────────
+function startTimer() {
+  if (timerInterval) return;
+  const memo = document.getElementById('meal-memo').value || '식사';
+  timerEndTime = Date.now() + 2*60*60*1000;
+  document.getElementById('btn-timer').textContent = '⏳ 진행 중...';
+  document.getElementById('btn-timer').disabled = true;
+  document.getElementById('btn-timer-cancel').style.display = 'block';
+  document.getElementById('timer-display').classList.add('running');
+
+  timerHistory.unshift({ start:toTimeStr(new Date()), memo, date:toDateStr(new Date()) });
+  if (timerHistory.length > 10) timerHistory.pop();
+  saveTimerH(); renderTimerHistory();
+
+  timerInterval = setInterval(() => {
+    const rem = timerEndTime - Date.now();
+    if (rem <= 0) {
+      clearInterval(timerInterval); timerInterval = null;
+      document.getElementById('timer-display').textContent = '00:00:00';
+      document.getElementById('timer-display').className = 'timer-display done';
+      document.getElementById('btn-timer').textContent = '🍚 식사 시작';
+      document.getElementById('btn-timer').disabled = false;
+      document.getElementById('btn-timer-cancel').style.display = 'none';
+      document.getElementById('timer-done-msg').textContent = `"${memo}" 식사 2시간이 지났어요!`;
+      document.getElementById('timer-done-modal').classList.add('open');
+      playBeep(); return;
+    }
+    const h=Math.floor(rem/3600000), m=Math.floor((rem%3600000)/60000), s=Math.floor((rem%60000)/1000);
+    document.getElementById('timer-display').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }, 1000);
+}
+
+function cancelTimer() {
+  clearInterval(timerInterval); timerInterval = null; timerEndTime = null;
+  document.getElementById('timer-display').textContent = '02:00:00';
+  document.getElementById('timer-display').className = 'timer-display';
+  document.getElementById('btn-timer').textContent = '🍚 식사 시작';
+  document.getElementById('btn-timer').disabled = false;
+  document.getElementById('btn-timer-cancel').style.display = 'none';
+}
+
+function dismissTimerModal() { document.getElementById('timer-done-modal').classList.remove('open'); openQuickModal('저녁식후2시간'); }
+function snoozeTimerModal() { document.getElementById('timer-done-modal').classList.remove('open'); setTimeout(()=>{ document.getElementById('timer-done-modal').classList.add('open'); playBeep(); }, 10*60*1000); }
+
+function renderTimerHistory() {
+  const card = document.getElementById('timer-recent');
+  const el   = document.getElementById('timer-history-list');
+  if (!timerHistory.length) { card.style.display='none'; return; }
+  card.style.display = 'block';
+  el.innerHTML = timerHistory.map(t=>`<div style="font-size:13px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);">${t.date} ${t.start} — ${t.memo}</div>`).join('');
+}
+
+// ── 알람 ──────────────────────────────────────────────────
+function addAlarm() {
+  const time = document.getElementById('alarm-time-inp').value;
+  const note = document.getElementById('alarm-note-inp').value.trim();
+  const tag  = document.getElementById('alarm-tag-inp').value;
+  if (!time) { alert('알람 시간을 설정해주세요.'); return; }
+  alarms.push({ id:Date.now(), time, note, tag, on:true, lastFired:null });
+  alarms.sort((a,b)=>a.time.localeCompare(b.time));
+  saveAlarms(); renderAlarmList();
+  document.getElementById('alarm-time-inp').value = '';
+  document.getElementById('alarm-note-inp').value = '';
+}
+
+function deleteAlarm(id) { alarms=alarms.filter(a=>a.id!==id); saveAlarms(); renderAlarmList(); }
+function toggleAlarm(id) { const a=alarms.find(a=>a.id===id); if(a){a.on=!a.on; saveAlarms(); renderAlarmList();} }
+
+function renderAlarmList() {
+  const el = document.getElementById('alarm-list');
+  if (!alarms.length) { el.innerHTML='<div class="empty">설정된 알람이 없어요</div>'; return; }
+  el.innerHTML = alarms.map(a=>`
+    <div class="alarm-item">
+      <div class="alarm-info">
+        <div class="alarm-time-lbl">${a.time}</div>
+        <div class="alarm-note">${a.tag}${a.note?' · '+a.note:''}</div>
+      </div>
+      <button class="alarm-toggle ${a.on?'on':''}" onclick="toggleAlarm(${a.id})"></button>
+      <button class="alarm-del" onclick="deleteAlarm(${a.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+function checkAlarms() {
+  const now = new Date();
+  const cur = toTimeStr(now);
+  const today = toDateStr(now);
+  alarms.forEach(a => {
+    if (!a.on || a.time !== cur || a.lastFired === today+'_'+cur) return;
+    a.lastFired = today+'_'+cur; saveAlarms(); fireAlarm(a);
+  });
+}
+
+function fireAlarm(alarm) {
+  currentAlarmFiring = alarm;
+  const msg = alarm.note ? `이제 ${alarm.note} 💪` : `${alarm.time} 알람이에요!`;
+  document.getElementById('alarm-fire-msg').textContent = msg;
+  document.getElementById('alarm-fire-sub').textContent = `${alarm.tag} 혈당을 재고 기록해봐요`;
+  document.getElementById('alarm-fire-modal').classList.add('open');
+  playBeep();
+}
+
+function dismissAlarm() {
+  document.getElementById('alarm-fire-modal').classList.remove('open');
+  const tag = currentAlarmFiring?.tag || '기상';
+  currentAlarmFiring = null;
+  openQuickModal(tag);
+}
+
+function snoozeAlarm() {
+  const alarm = currentAlarmFiring;
+  document.getElementById('alarm-fire-modal').classList.remove('open');
+  currentAlarmFiring = null;
+  setTimeout(()=>fireAlarm(alarm), 5*60*1000);
+}
+
+// ── 빠른 기록 ─────────────────────────────────────────────
+let qrTimeInterval = null;
+function openQuickModal(tag) {
+  document.getElementById('qr-time').textContent = toTimeStr(new Date());
+  document.getElementById('qr-tag').value = tag || '기상';
+  document.getElementById('qr-val').value = '';
+  document.getElementById('quick-modal').classList.add('open');
+  qrTimeInterval = setInterval(()=>{ document.getElementById('qr-time').textContent = toTimeStr(new Date()); }, 15000);
+}
+
+function closeQuickModal() { clearInterval(qrTimeInterval); document.getElementById('quick-modal').classList.remove('open'); }
+
+function saveQuickRecord() {
+  const val  = parseInt(document.getElementById('qr-val').value);
+  const tag  = document.getElementById('qr-tag').value;
+  const time = document.getElementById('qr-time').textContent;
+  const date = toDateStr(new Date());
+  if (isNaN(val)||val<40||val>600) { alert('혈당 수치(40~600)를 올바르게 입력해주세요.'); return; }
+  records.push({date,time,val,tag,id:Date.now()});
+  records.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  save(); renderAll();
+  closeQuickModal();
+  alert('✅ 기록됐어요! 오늘도 수고했어요 💪');
+}
+
+// ── 비프음 ────────────────────────────────────────────────
+function playBeep() {
+  try {
+    const actx = new (window.AudioContext||window.webkitAudioContext)();
+    [0,0.3,0.6].forEach(delay=>{
+      const osc=actx.createOscillator(), gain=actx.createGain();
+      osc.connect(gain); gain.connect(actx.destination);
+      osc.frequency.value=880; osc.type='sine';
+      gain.gain.setValueAtTime(0.4,actx.currentTime+delay);
+      gain.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+delay+0.25);
+      osc.start(actx.currentTime+delay); osc.stop(actx.currentTime+delay+0.25);
+    });
+  } catch(e){}
+}
+</script>
+</body>
+</html>
